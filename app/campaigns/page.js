@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function CampaignsPage() {
-    const [farmerCount, setFarmerCount] = useState(0);
+    const [allFarmers, setAllFarmers] = useState([]);
     const [testMode, setTestMode] = useState(true);
     const [messageType, setMessageType] = useState('template');
     const [templateName, setTemplateName] = useState('hello_world');
@@ -13,24 +13,64 @@ export default function CampaignsPage() {
         'Namaste {name}! Welcome to Fasal Charcha. Reply HI to start a crop survey!'
     );
     const [testPhone, setTestPhone] = useState('');
+    const [testName, setTestName] = useState('');
     const [campaignName, setCampaignName] = useState('');
     const [sending, setSending] = useState(false);
     const [result, setResult] = useState(null);
     const [progress, setProgress] = useState({ sent: 0, failed: 0, total: 0, done: false });
 
+    // Filters
+    const [filterState, setFilterState] = useState('ALL');
+    const [filterDistrict, setFilterDistrict] = useState('ALL');
+    const [filterLanguage, setFilterLanguage] = useState('ALL');
+    const [showAudience, setShowAudience] = useState(false);
+
+    // Derived values
+    const [states, setStates] = useState([]);
+    const [districts, setDistricts] = useState([]);
+    const [languages, setLanguages] = useState([]);
+
     useEffect(() => {
-        supabase
-            .from('farmers')
-            .select('*', { count: 'exact', head: true })
-            .then(({ count }) => setFarmerCount(count || 0));
+        fetchFarmers();
     }, []);
+
+    async function fetchFarmers() {
+        const { data } = await supabase
+            .from('farmers')
+            .select('full_name, phone_number, state, district, preferred_language')
+            .limit(2000);
+
+        const farmers = data || [];
+        setAllFarmers(farmers);
+
+        // Extract unique filter options
+        const uniqueStates = [...new Set(farmers.map(f => f.state).filter(Boolean))].sort();
+        const uniqueDistricts = [...new Set(farmers.map(f => f.district).filter(Boolean))].sort();
+        const uniqueLangs = [...new Set(farmers.map(f => f.preferred_language).filter(Boolean))].sort();
+        setStates(uniqueStates);
+        setDistricts(uniqueDistricts);
+        setLanguages(uniqueLangs);
+    }
+
+    // Apply filters to get target audience
+    const filteredFarmers = allFarmers.filter(f => {
+        if (filterState !== 'ALL' && f.state !== filterState) return false;
+        if (filterDistrict !== 'ALL' && f.district !== filterDistrict) return false;
+        if (filterLanguage !== 'ALL' && f.preferred_language !== filterLanguage) return false;
+        return true;
+    });
+
+    // Update districts when state changes
+    const availableDistricts = filterState === 'ALL'
+        ? districts
+        : [...new Set(allFarmers.filter(f => f.state === filterState).map(f => f.district).filter(Boolean))].sort();
 
     async function handleSend() {
         setSending(true);
         setResult(null);
 
         if (testMode) {
-            // Test mode — single message via API route
+            // Test mode — single message
             const phone = testPhone.replace(/[^0-9]/g, '');
             if (!phone || phone.length < 10) {
                 setResult({ success: false, error: 'Enter a valid phone number' });
@@ -41,8 +81,8 @@ export default function CampaignsPage() {
             try {
                 const endpoint = messageType === 'template' ? '/api/send-template' : '/api/send-message';
                 const body = messageType === 'template'
-                    ? { to: phone, template_name: templateName, language: templateLang }
-                    : { to: phone, message: messageText };
+                    ? { to: phone, template_name: templateName, language: templateLang, parameters: testName ? [testName] : undefined }
+                    : { to: phone, message: messageText.replace('{name}', testName || 'Farmer') };
 
                 const res = await fetch(endpoint, {
                     method: 'POST',
@@ -56,31 +96,30 @@ export default function CampaignsPage() {
                 setResult({ success: false, error: err.message });
             }
         } else {
-            // Live mode — send to all farmers
-            const { data: farmers } = await supabase
-                .from('farmers')
-                .select('full_name, phone_number')
-                .limit(1000);
+            // Live mode — send to filtered farmers
+            const targets = filteredFarmers;
 
-            if (!farmers || farmers.length === 0) {
-                setResult({ success: false, error: 'No farmers in database' });
+            if (targets.length === 0) {
+                setResult({ success: false, error: 'No farmers match your filters' });
                 setSending(false);
                 return;
             }
 
-            setProgress({ sent: 0, failed: 0, total: farmers.length, done: false });
+            setProgress({ sent: 0, failed: 0, total: targets.length, done: false });
 
             let sent = 0, failed = 0;
 
-            for (const farmer of farmers) {
+            for (const farmer of targets) {
                 const phone = (farmer.phone_number || '').replace(/[^0-9]/g, '');
-                if (!phone) { failed++; continue; }
+                if (!phone || phone.length < 10) { failed++; continue; }
+
+                const farmerName = farmer.full_name || 'Farmer';
 
                 try {
                     const endpoint = messageType === 'template' ? '/api/send-template' : '/api/send-message';
                     const body = messageType === 'template'
-                        ? { to: phone, template_name: templateName, language: templateLang }
-                        : { to: phone, message: messageText.replace('{name}', farmer.full_name || 'Farmer') };
+                        ? { to: phone, template_name: templateName, language: templateLang, parameters: [farmerName] }
+                        : { to: phone, message: messageText.replace('{name}', farmerName) };
 
                     const res = await fetch(endpoint, {
                         method: 'POST',
@@ -94,14 +133,14 @@ export default function CampaignsPage() {
                     failed++;
                 }
 
-                setProgress({ sent, failed, total: farmers.length, done: false });
+                setProgress({ sent, failed, total: targets.length, done: false });
 
-                // Rate limit pause
+                // Rate limit — 1 msg/sec
                 await new Promise(r => setTimeout(r, 1000));
             }
 
-            setProgress({ sent, failed, total: farmers.length, done: true });
-            setResult({ success: sent > 0, message: `Sent: ${sent}, Failed: ${failed}` });
+            setProgress({ sent, failed, total: targets.length, done: true });
+            setResult({ success: sent > 0, message: `Campaign complete! Sent: ${sent}, Failed: ${failed}` });
         }
 
         setSending(false);
@@ -111,37 +150,98 @@ export default function CampaignsPage() {
         <>
             <div className="page-header">
                 <h1>📨 Campaigns</h1>
-                <p>Send WhatsApp messages to your farmers</p>
+                <p>Send personalized WhatsApp messages to your farmers</p>
             </div>
 
             <div className="grid-2">
-                {/* Left Column */}
+                {/* Left Column — Campaign Setup */}
                 <div className="glass-card animate-in">
                     <h3 style={{ marginBottom: 16 }}>Campaign Setup</h3>
 
                     <div className="form-group">
                         <label className="form-label">Campaign Name</label>
-                        <input className="form-input" placeholder="e.g., Crop Survey Campaign" value={campaignName} onChange={e => setCampaignName(e.target.value)} />
+                        <input className="form-input" placeholder="e.g., Crop Survey - Maharashtra" value={campaignName} onChange={e => setCampaignName(e.target.value)} />
                     </div>
 
                     <div className="toggle-wrapper" onClick={() => setTestMode(!testMode)} style={{ cursor: 'pointer' }}>
                         <div className={`toggle ${testMode ? 'active' : ''}`}></div>
-                        <span className="toggle-label">🧪 Test Mode (one number only)</span>
+                        <span className="toggle-label">🧪 Test Mode (single number)</span>
                     </div>
 
                     {testMode ? (
-                        <div className="form-group">
-                            <label className="form-label">Test Phone Number</label>
-                            <input className="form-input" placeholder="e.g., 918626026537" value={testPhone} onChange={e => setTestPhone(e.target.value)} />
-                        </div>
+                        <>
+                            <div className="form-group">
+                                <label className="form-label">Test Phone Number</label>
+                                <input className="form-input" placeholder="e.g., 918626026537" value={testPhone} onChange={e => setTestPhone(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Test Name (for personalization)</label>
+                                <input className="form-input" placeholder="e.g., Ramesh" value={testName} onChange={e => setTestName(e.target.value)} />
+                            </div>
+                        </>
                     ) : (
-                        <div className="alert alert-warning">
-                            ⚠️ Live Mode — will send to ALL {farmerCount} farmers!
-                        </div>
+                        <>
+                            {/* Audience Filters */}
+                            <div style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', padding: 16, marginBottom: 16 }}>
+                                <h3 style={{ marginBottom: 12, fontSize: '0.95rem' }}>🎯 Target Audience</h3>
+
+                                <div className="form-group" style={{ marginBottom: 12 }}>
+                                    <label className="form-label">State</label>
+                                    <select className="form-select" value={filterState} onChange={e => { setFilterState(e.target.value); setFilterDistrict('ALL'); }}>
+                                        <option value="ALL">All States</option>
+                                        {states.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: 12 }}>
+                                    <label className="form-label">District</label>
+                                    <select className="form-select" value={filterDistrict} onChange={e => setFilterDistrict(e.target.value)}>
+                                        <option value="ALL">All Districts</option>
+                                        {availableDistricts.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: 8 }}>
+                                    <label className="form-label">Language</label>
+                                    <select className="form-select" value={filterLanguage} onChange={e => setFilterLanguage(e.target.value)}>
+                                        <option value="ALL">All Languages</option>
+                                        {languages.map(l => <option key={l} value={l}>{l}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Audience Summary */}
+                            <div className="alert alert-info" style={{ marginBottom: 12 }}>
+                                📊 <strong>{filteredFarmers.length}</strong> farmers match your filters (out of {allFarmers.length} total)
+                            </div>
+
+                            {filteredFarmers.length > 0 && (
+                                <div style={{ marginBottom: 12 }}>
+                                    <button
+                                        className="btn btn-secondary"
+                                        style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                                        onClick={() => setShowAudience(!showAudience)}
+                                    >
+                                        {showAudience ? '🔼 Hide' : '🔽 Preview'} Audience List
+                                    </button>
+                                </div>
+                            )}
+
+                            {showAudience && filteredFarmers.length > 0 && (
+                                <div style={{ maxHeight: 200, overflowY: 'auto', fontSize: '0.82rem', background: 'var(--bg-glass)', borderRadius: 'var(--radius-sm)', padding: 8, border: '1px solid var(--border-glass)' }}>
+                                    {filteredFarmers.map((f, i) => (
+                                        <div key={i} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ fontWeight: 500 }}>{f.full_name || '—'}</span>
+                                            <span style={{ color: 'var(--text-muted)' }}>{f.phone_number}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
-                {/* Right Column */}
+                {/* Right Column — Message */}
                 <div className="glass-card animate-in" style={{ animationDelay: '0.1s' }}>
                     <h3 style={{ marginBottom: 16 }}>Message</h3>
 
@@ -171,22 +271,31 @@ export default function CampaignsPage() {
                                     <option value="gu">Gujarati</option>
                                 </select>
                             </div>
-                            <div className="alert alert-info">💡 The <code>hello_world</code> template is pre-approved and works immediately.</div>
+                            <div className="alert alert-info">
+                                💡 In live mode, each farmer's <strong>name</strong> is automatically sent as the template parameter.
+                                <br /><small style={{ color: 'var(--text-muted)' }}>Use <code>crop_survey_invite</code> for personalized messages, or <code>hello_world</code> for generic.</small>
+                            </div>
                         </>
                     ) : (
                         <div className="form-group">
                             <label className="form-label">Message Text</label>
                             <textarea className="form-textarea" value={messageText} onChange={e => setMessageText(e.target.value)} />
+                            <small style={{ color: 'var(--text-muted)' }}>Use <code>{'{name}'}</code> to insert farmer's name</small>
                         </div>
                     )}
                 </div>
             </div>
 
             {/* Send Button */}
-            <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+            <div style={{ marginTop: 24, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <button className="btn btn-primary" onClick={handleSend} disabled={sending}>
-                    {sending ? <><span className="loading"></span> Sending...</> : testMode ? '🚀 Send Test' : '🚀 Send to All'}
+                    {sending ? <><span className="loading"></span> Sending...</> : testMode ? '🚀 Send Test' : `🚀 Send to ${filteredFarmers.length} Farmers`}
                 </button>
+                {!testMode && filteredFarmers.length > 50 && (
+                    <span style={{ fontSize: '0.82rem', color: 'var(--accent-orange)' }}>
+                        ⏱️ Est. time: ~{Math.ceil(filteredFarmers.length / 60)} min
+                    </span>
+                )}
             </div>
 
             {/* Progress (live mode) */}
@@ -197,7 +306,8 @@ export default function CampaignsPage() {
                         <div className="progress-bar-fill" style={{ width: `${((progress.sent + progress.failed) / progress.total) * 100}%` }}></div>
                     </div>
                     <p style={{ marginTop: 8, fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                        Sent: {progress.sent} | Failed: {progress.failed} | Total: {progress.total}
+                        ✅ Sent: {progress.sent} | ❌ Failed: {progress.failed} | Total: {progress.total}
+                        {progress.done && <span style={{ color: 'var(--accent-green)', marginLeft: 12 }}>— Complete!</span>}
                     </p>
                 </div>
             )}
