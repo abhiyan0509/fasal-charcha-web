@@ -149,7 +149,7 @@ export default function CampaignsPage() {
     return (
         <>
             <div className="page-header">
-                <h1>📨 Campaigns</h1>
+                <h1>Campaigns</h1>
                 <p>Send personalized WhatsApp messages to your farmers</p>
             </div>
 
@@ -165,7 +165,7 @@ export default function CampaignsPage() {
 
                     <div className="toggle-wrapper" onClick={() => setTestMode(!testMode)} style={{ cursor: 'pointer' }}>
                         <div className={`toggle ${testMode ? 'active' : ''}`}></div>
-                        <span className="toggle-label">🧪 Test Mode (single number)</span>
+                        <span className="toggle-label">Test Mode (single number)</span>
                     </div>
 
                     {testMode ? (
@@ -182,8 +182,11 @@ export default function CampaignsPage() {
                     ) : (
                         <>
                             {/* Audience Filters */}
-                            <div style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', padding: 16, marginBottom: 16 }}>
-                                <h3 style={{ marginBottom: 12, fontSize: '0.95rem' }}>🎯 Target Audience</h3>
+                            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: 16, marginBottom: 16 }}>
+                                <h3 style={{ marginBottom: 12, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></svg>
+                                    Target Audience
+                                </h3>
 
                                 <div className="form-group" style={{ marginBottom: 12 }}>
                                     <label className="form-label">State</label>
@@ -212,25 +215,26 @@ export default function CampaignsPage() {
 
                             {/* Audience Summary */}
                             <div className="alert alert-info" style={{ marginBottom: 12 }}>
-                                📊 <strong>{filteredFarmers.length}</strong> farmers match your filters (out of {allFarmers.length} total)
+                                <strong>{filteredFarmers.length}</strong> farmers match your filters (out of {allFarmers.length} total)
                             </div>
 
                             {filteredFarmers.length > 0 && (
                                 <div style={{ marginBottom: 12 }}>
                                     <button
                                         className="btn btn-secondary"
-                                        style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                                        style={{ fontSize: '0.82rem', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
                                         onClick={() => setShowAudience(!showAudience)}
                                     >
-                                        {showAudience ? '🔼 Hide' : '🔽 Preview'} Audience List
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: showAudience ? 'rotate(180deg)' : 'none', transition: '0.2s' }}><polyline points="6 9 12 15 18 9" /></svg>
+                                        {showAudience ? 'Hide' : 'Preview'} Audience List
                                     </button>
                                 </div>
                             )}
 
                             {showAudience && filteredFarmers.length > 0 && (
-                                <div style={{ maxHeight: 200, overflowY: 'auto', fontSize: '0.82rem', background: 'var(--bg-glass)', borderRadius: 'var(--radius-sm)', padding: 8, border: '1px solid var(--border-glass)' }}>
+                                <div style={{ maxHeight: 200, overflowY: 'auto', fontSize: '0.82rem', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', padding: 8, border: '1px solid var(--border-subtle)' }}>
                                     {filteredFarmers.map((f, i) => (
-                                        <div key={i} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between' }}>
+                                        <div key={i} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
                                             <span style={{ fontWeight: 500 }}>{f.full_name || '—'}</span>
                                             <span style={{ color: 'var(--text-muted)' }}>{f.phone_number}</span>
                                         </div>
@@ -248,8 +252,8 @@ export default function CampaignsPage() {
                     <div className="form-group">
                         <label className="form-label">Message Type</label>
                         <select className="form-select" value={messageType} onChange={e => setMessageType(e.target.value)}>
-                            <option value="template">📋 Template (recommended)</option>
-                            <option value="text">💬 Plain Text</option>
+                            <option value="template">Template (recommended)</option>
+                            <option value="text">Plain Text</option>
                         </select>
                     </div>
 
@@ -272,7 +276,7 @@ export default function CampaignsPage() {
                                 </select>
                             </div>
                             <div className="alert alert-info">
-                                💡 In live mode, each farmer's <strong>name</strong> is automatically sent as the template parameter.
+                                <strong>Tip:</strong> In live mode, each farmer's <strong>name</strong> is automatically sent as the template parameter.
                                 <br /><small style={{ color: 'var(--text-muted)' }}>Use <code>crop_survey_invite</code> for personalized messages, or <code>hello_world</code> for generic.</small>
                             </div>
                         </>
@@ -289,11 +293,16 @@ export default function CampaignsPage() {
             {/* Send Button */}
             <div style={{ marginTop: 24, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <button className="btn btn-primary" onClick={handleSend} disabled={sending}>
-                    {sending ? <><span className="loading"></span> Sending...</> : testMode ? '🚀 Send Test' : `🚀 Send to ${filteredFarmers.length} Farmers`}
+                    {sending ? <><span className="loading"></span> Sending...</> : (
+                        <>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" x2="11" y1="2" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+                            {testMode ? 'Send Test' : `Send to ${filteredFarmers.length} Farmers`}
+                        </>
+                    )}
                 </button>
                 {!testMode && filteredFarmers.length > 50 && (
-                    <span style={{ fontSize: '0.82rem', color: 'var(--accent-orange)' }}>
-                        ⏱️ Est. time: ~{Math.ceil(filteredFarmers.length / 60)} min
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                        Est. time: ~{Math.ceil(filteredFarmers.length / 60)} min
                     </span>
                 )}
             </div>
@@ -305,9 +314,11 @@ export default function CampaignsPage() {
                     <div className="progress-bar">
                         <div className="progress-bar-fill" style={{ width: `${((progress.sent + progress.failed) / progress.total) * 100}%` }}></div>
                     </div>
-                    <p style={{ marginTop: 8, fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                        ✅ Sent: {progress.sent} | ❌ Failed: {progress.failed} | Total: {progress.total}
-                        {progress.done && <span style={{ color: 'var(--accent-green)', marginLeft: 12 }}>— Complete!</span>}
+                    <p style={{ marginTop: 8, fontSize: '0.88rem', color: 'var(--text-secondary)', display: 'flex', gap: '16px' }}>
+                        <span><strong style={{ color: 'var(--success-text)' }}>Sent:</strong> {progress.sent}</span>
+                        <span><strong style={{ color: 'var(--error-text)' }}>Failed:</strong> {progress.failed}</span>
+                        <span><strong>Total:</strong> {progress.total}</span>
+                        {progress.done && <span style={{ color: 'var(--success-text)', fontWeight: 600 }}>— Complete!</span>}
                     </p>
                 </div>
             )}
@@ -315,7 +326,7 @@ export default function CampaignsPage() {
             {/* Result */}
             {result && (
                 <div className={`alert ${result.success ? 'alert-success' : 'alert-error'}`} style={{ marginTop: 16 }}>
-                    {result.success ? '✅' : '❌'} {result.message || result.error || (result.success ? 'Message sent successfully!' : 'Failed to send')}
+                    <strong>{result.success ? 'Success: ' : 'Error: '}</strong> {result.message || result.error || (result.success ? 'Message sent successfully!' : 'Failed to send')}
                 </div>
             )}
 

@@ -108,15 +108,17 @@ export default function FarmersPage() {
     return (
         <>
             <div className="page-header">
-                <h1>🌾 Farmers</h1>
+                <h1>Farmers</h1>
                 <p>Manage your farmer database</p>
             </div>
 
             {/* Upload Section */}
             <div className="glass-card animate-in" style={{ marginBottom: 24 }}>
-                <h3 style={{ marginBottom: 12 }}>Upload Farmer Data</h3>
+                <h3 style={{ marginBottom: 16 }}>Upload Farmer Data</h3>
                 <label className="upload-zone" htmlFor="csv-upload" style={{ display: 'block' }}>
-                    <div className="upload-icon">📁</div>
+                    <div className="upload-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m16 16-4-4-4 4" /></svg>
+                    </div>
                     <div className="upload-text">
                         {uploading ? 'Uploading...' : 'Click to upload CSV file'}
                     </div>
@@ -139,12 +141,22 @@ export default function FarmersPage() {
 
             {/* Stats */}
             <div className="stats-grid">
-                <div className="stat-card green">
-                    <div className="stat-label">Total Farmers</div>
+                <div className="stat-card">
+                    <div className="stat-header">
+                        <div className="stat-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                        </div>
+                        <div className="stat-label">Total Farmers</div>
+                    </div>
                     <div className="stat-value">{farmers.length}</div>
                 </div>
-                <div className="stat-card blue">
-                    <div className="stat-label">Showing</div>
+                <div className="stat-card">
+                    <div className="stat-header">
+                        <div className="stat-icon-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                        </div>
+                        <div className="stat-label">Showing</div>
+                    </div>
                     <div className="stat-value">{filteredFarmers.length}</div>
                 </div>
             </div>
@@ -154,7 +166,7 @@ export default function FarmersPage() {
                 <input
                     className="form-input"
                     type="text"
-                    placeholder="🔍 Search by name, phone, state, district..."
+                    placeholder="Search by name, phone, state, district..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -183,7 +195,7 @@ export default function FarmersPage() {
                                     <tr key={i}>
                                         <td style={{ fontWeight: 500 }}>{f.full_name || '—'}</td>
                                         <td>
-                                            <code style={{ color: 'var(--accent-green)', background: 'var(--bg-glass)', padding: '2px 6px', borderRadius: 4, fontSize: '0.82rem' }}>
+                                            <code>
                                                 {f.phone_number}
                                             </code>
                                         </td>
