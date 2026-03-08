@@ -8,7 +8,7 @@ export default function CampaignsPage() {
     const [testMode, setTestMode] = useState(true);
     const [messageType, setMessageType] = useState('template');
     const [templateName, setTemplateName] = useState('hello_world');
-    const [templateLang, setTemplateLang] = useState('en_US');
+    const [templateLang, setTemplateLang] = useState('en');
     const [messageText, setMessageText] = useState(
         'Namaste {name}! Welcome to Fasal Charcha. Reply HI to start a crop survey!'
     );
@@ -266,6 +266,7 @@ export default function CampaignsPage() {
                             <div className="form-group">
                                 <label className="form-label">Language</label>
                                 <select className="form-select" value={templateLang} onChange={e => setTemplateLang(e.target.value)}>
+                                    <option value="en">English</option>
                                     <option value="en_US">English (US)</option>
                                     <option value="hi">Hindi</option>
                                     <option value="mr">Marathi</option>
