@@ -81,7 +81,7 @@ export default function CampaignsPage() {
             try {
                 const endpoint = messageType === 'template' ? '/api/send-template' : '/api/send-message';
                 const body = messageType === 'template'
-                    ? { to: phone, template_name: templateName, language: templateLang, parameters: testName ? [testName] : undefined }
+                    ? { to: phone, template_name: templateName, language: templateLang, parameters: testName ? [{ name: 'farmer_name', value: testName }] : undefined }
                     : { to: phone, message: messageText.replace('{name}', testName || 'Farmer') };
 
                 const res = await fetch(endpoint, {
@@ -118,7 +118,7 @@ export default function CampaignsPage() {
                 try {
                     const endpoint = messageType === 'template' ? '/api/send-template' : '/api/send-message';
                     const body = messageType === 'template'
-                        ? { to: phone, template_name: templateName, language: templateLang, parameters: [farmerName] }
+                        ? { to: phone, template_name: templateName, language: templateLang, parameters: [{ name: 'farmer_name', value: farmerName }] }
                         : { to: phone, message: messageText.replace('{name}', farmerName) };
 
                     const res = await fetch(endpoint, {

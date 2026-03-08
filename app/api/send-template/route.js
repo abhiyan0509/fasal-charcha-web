@@ -27,7 +27,13 @@ export async function POST(request) {
         if (parameters && parameters.length > 0) {
             templateData.components = [{
                 type: 'body',
-                parameters: parameters.map(p => ({ type: 'text', text: String(p) })),
+                parameters: parameters.map(p => {
+                    // Support both named params {name, value} and plain strings
+                    if (typeof p === 'object' && p.name) {
+                        return { type: 'text', parameter_name: p.name, text: String(p.value || '') };
+                    }
+                    return { type: 'text', text: String(p) };
+                }),
             }];
         }
 
