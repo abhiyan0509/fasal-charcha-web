@@ -15,6 +15,108 @@ const SURVEY_QUESTIONS = [
 // Short labels for pivot columns
 const Q_SHORT = ['Crop', 'Area (acres)', 'Pest Issues', 'Seed Type', 'Organic Interest', 'Irrigation'];
 
+// ─── Intelligent Answer Normalization ───────────────────────────────────
+// Known categories per question, with keywords that map to each category
+const ANSWER_CATEGORIES = {
+    // Q0: Crop
+    0: {
+        'Wheat': ['wheat', 'gehun', 'gehu'],
+        'Rice': ['rice', 'chawal', 'dhan', 'paddy'],
+        'Cotton': ['cotton', 'kapas', 'kapaa'],
+        'Soybean': ['soybean', 'soya', 'soyabean'],
+        'Maize': ['maize', 'makka', 'corn'],
+        'Sugarcane': ['sugarcane', 'ganna', 'sugar'],
+        'Pulses': ['pulses', 'dal', 'lentil', 'gram', 'chana', 'moong', 'urad', 'toor', 'arhar'],
+        'Vegetables': ['vegetable', 'sabji', 'sabzi', 'tomato', 'onion', 'potato'],
+        'Mustard': ['mustard', 'sarson', 'rai'],
+        'Millet': ['millet', 'bajra', 'jowar', 'ragi'],
+    },
+    // Q1: Area — extract numeric value and bucket
+    1: '_numeric',
+    // Q2: Pest/Disease
+    2: {
+        'Yes': ['yes', 'haan', 'ha', 'haa', 'ji', 'faced', 'deal', 'insect', 'pest', 'disease', 'attack', 'encountered', 'recently'],
+        'No': ['no', 'nahi', 'naa', 'nahin', 'not'],
+    },
+    // Q3: Seed type
+    3: {
+        'Hybrid': ['hybrid'],
+        'Traditional': ['traditional', 'indigenous', 'desi', 'local'],
+        'Both': ['both', 'dono'],
+    },
+    // Q4: Organic interest
+    4: {
+        'Yes': ['yes', 'haan', 'ha', 'haa', 'ji', 'interested', 'interest', 'organic'],
+        'No': ['no', 'nahi', 'naa', 'nahin', 'not'],
+    },
+    // Q5: Irrigation
+    5: {
+        'Borewell': ['borewell', 'borwell', 'borwill', 'bore', 'tubewell', 'tube'],
+        'Canal': ['canal', 'nahar', 'naala'],
+        'Rain-fed': ['rain', 'rainfed', 'barish', 'varsha', 'baarish'],
+        'River': ['river', 'nadi'],
+        'Drip': ['drip', 'sprinkler', 'micro'],
+        'Well': ['well', 'kuan', 'kuwa'],
+    },
+};
+
+function normalizeAnswer(rawAnswer, questionIndex) {
+    if (!rawAnswer || !rawAnswer.trim()) return '';
+
+    // Step 1: Basic cleanup — lowercase, strip punctuation, trim
+    let cleaned = rawAnswer
+        .trim()
+        .toLowerCase()
+        .replace(/[.!?,;:'"()[\]{}]/g, '')  // remove punctuation
+        .replace(/\s+/g, ' ')               // collapse whitespace
+        .trim();
+
+    if (!cleaned) return '';
+
+    const categories = ANSWER_CATEGORIES[questionIndex];
+
+    // Step 2: Numeric handling (area question)
+    if (categories === '_numeric') {
+        const numMatch = cleaned.match(/[\d]+\.?[\d]*/);
+        if (numMatch) {
+            const num = parseFloat(numMatch[0]);
+            if (num <= 1) return '≤ 1 acre';
+            if (num <= 2) return '1–2 acres';
+            if (num <= 5) return '2–5 acres';
+            if (num <= 10) return '5–10 acres';
+            return '10+ acres';
+        }
+        // If no number found, try word numbers
+        const wordNums = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+        for (const [word, num] of Object.entries(wordNums)) {
+            if (cleaned.includes(word)) {
+                if (num <= 1) return '≤ 1 acre';
+                if (num <= 2) return '1–2 acres';
+                if (num <= 5) return '2–5 acres';
+                if (num <= 10) return '5–10 acres';
+                return '10+ acres';
+            }
+        }
+        // Return cleaned text as-is if no number found
+        return cleaned;
+    }
+
+    // Step 3: Category matching using keywords
+    if (categories && typeof categories === 'object') {
+        // Check each category's keywords
+        for (const [category, keywords] of Object.entries(categories)) {
+            for (const kw of keywords) {
+                if (cleaned.includes(kw)) {
+                    return category;
+                }
+            }
+        }
+    }
+
+    // Step 4: Fallback — capitalize first letter for display
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
 export default function ResponsesPage() {
     const [stats, setStats] = useState({ total: 0, completed: 0, inProgress: 0 });
     const [sessions, setSessions] = useState([]);
@@ -66,25 +168,24 @@ export default function ResponsesPage() {
             const pivot = Object.entries(byPhone).map(([phone, answers]) => ({
                 phone,
                 answers,
-                // Find session language for this phone
                 language: allSessions.find(s => s.phone_number === phone)?.language || '—',
             }));
 
             setPivotData(pivot);
 
-            // Build answer frequency stats per question
+            // Build answer frequency stats per question — WITH NORMALIZATION
             const qStats = {};
             SURVEY_QUESTIONS.forEach((_, qi) => {
                 const answersForQ = (responses || []).filter(r => r.question_index === qi);
                 const freq = {};
                 answersForQ.forEach(r => {
-                    const ans = (r.answer || '').trim().toLowerCase();
-                    if (ans) freq[ans] = (freq[ans] || 0) + 1;
+                    const normalized = normalizeAnswer(r.answer, qi);
+                    if (normalized) freq[normalized] = (freq[normalized] || 0) + 1;
                 });
                 // Sort by frequency descending
                 qStats[qi] = Object.entries(freq)
                     .sort((a, b) => b[1] - a[1])
-                    .slice(0, 8); // Top 8 answers
+                    .slice(0, 10);
             });
             setAnswerStats(qStats);
         } catch (err) {
