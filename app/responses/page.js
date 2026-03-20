@@ -12,33 +12,39 @@ const SURVEY_QUESTIONS = [
     'What is your main source of irrigation?',
 ];
 
+// Short labels for pivot columns
+const Q_SHORT = ['Crop', 'Area (acres)', 'Pest Issues', 'Seed Type', 'Organic Interest', 'Irrigation'];
+
 export default function ResponsesPage() {
     const [stats, setStats] = useState({ total: 0, completed: 0, inProgress: 0 });
+    const [sessions, setSessions] = useState([]);
     const [pivotData, setPivotData] = useState([]);
     const [rawData, setRawData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [showRaw, setShowRaw] = useState(false);
+    const [viewMode, setViewMode] = useState('summary'); // 'summary' | 'pivot' | 'raw'
+    const [answerStats, setAnswerStats] = useState({});
 
     useEffect(() => {
         fetchData();
     }, []);
 
     async function fetchData() {
+        setLoading(true);
         try {
-            // Survey session stats
-            const { count: totalSessions } = await supabase
+            // Survey sessions (with language info)
+            const { data: sessionData } = await supabase
                 .from('survey_sessions')
-                .select('*', { count: 'exact', head: true });
+                .select('*')
+                .order('created_at', { ascending: false });
 
-            const { count: completedSessions } = await supabase
-                .from('survey_sessions')
-                .select('*', { count: 'exact', head: true })
-                .not('completed_at', 'is', null);
+            const allSessions = sessionData || [];
+            setSessions(allSessions);
 
+            const completedCount = allSessions.filter(s => s.completed_at).length;
             setStats({
-                total: totalSessions || 0,
-                completed: completedSessions || 0,
-                inProgress: (totalSessions || 0) - (completedSessions || 0),
+                total: allSessions.length,
+                completed: completedCount,
+                inProgress: allSessions.length - completedCount,
             });
 
             // Get all responses
@@ -46,7 +52,7 @@ export default function ResponsesPage() {
                 .from('survey_responses')
                 .select('*')
                 .order('answered_at', { ascending: true })
-                .limit(1000);
+                .limit(2000);
 
             setRawData(responses || []);
 
@@ -60,9 +66,27 @@ export default function ResponsesPage() {
             const pivot = Object.entries(byPhone).map(([phone, answers]) => ({
                 phone,
                 answers,
+                // Find session language for this phone
+                language: allSessions.find(s => s.phone_number === phone)?.language || '—',
             }));
 
             setPivotData(pivot);
+
+            // Build answer frequency stats per question
+            const qStats = {};
+            SURVEY_QUESTIONS.forEach((_, qi) => {
+                const answersForQ = (responses || []).filter(r => r.question_index === qi);
+                const freq = {};
+                answersForQ.forEach(r => {
+                    const ans = (r.answer || '').trim().toLowerCase();
+                    if (ans) freq[ans] = (freq[ans] || 0) + 1;
+                });
+                // Sort by frequency descending
+                qStats[qi] = Object.entries(freq)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 8); // Top 8 answers
+            });
+            setAnswerStats(qStats);
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
@@ -70,10 +94,19 @@ export default function ResponsesPage() {
         }
     }
 
+    // Language distribution
+    const langDist = {};
+    sessions.forEach(s => {
+        const lang = s.language || 'english';
+        langDist[lang] = (langDist[lang] || 0) + 1;
+    });
+    const langEntries = Object.entries(langDist).sort((a, b) => b[1] - a[1]);
+
     function downloadCSV() {
-        const headers = ['Phone', ...SURVEY_QUESTIONS.map((_, i) => `Q${i + 1}`)];
+        const headers = ['Phone', 'Language', ...Q_SHORT];
         const rows = pivotData.map(r => [
             r.phone,
+            r.language,
             ...SURVEY_QUESTIONS.map((_, i) => r.answers[i] || ''),
         ]);
 
@@ -95,14 +128,16 @@ export default function ResponsesPage() {
         );
     }
 
+    const maxLangCount = Math.max(...Object.values(langDist), 1);
+
     return (
         <>
             <div className="page-header">
                 <h1>Survey Responses</h1>
-                <p>View farmer survey answers collected via WhatsApp</p>
+                <p>Visualize farmer survey answers collected via WhatsApp</p>
             </div>
 
-            {/* Stats */}
+            {/* Stats Cards */}
             <div className="stats-grid">
                 <div className="stat-card">
                     <div className="stat-header">
@@ -142,88 +177,193 @@ export default function ResponsesPage() {
                 </div>
             </div>
 
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+            {/* Language Distribution */}
+            {langEntries.length > 0 && (
+                <div className="glass-card animate-in" style={{ marginBottom: 24 }}>
+                    <h3 style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        🌐 Language Distribution
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {langEntries.map(([lang, count]) => (
+                            <div key={lang} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <span style={{ minWidth: 90, fontWeight: 500, textTransform: 'capitalize', fontSize: '0.9rem' }}>{lang}</span>
+                                <div style={{ flex: 1, background: 'var(--bg-primary)', borderRadius: 6, height: 28, overflow: 'hidden', position: 'relative' }}>
+                                    <div style={{
+                                        width: `${(count / maxLangCount) * 100}%`,
+                                        height: '100%',
+                                        background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))',
+                                        borderRadius: 6,
+                                        transition: 'width 0.6s ease',
+                                        minWidth: 30,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        paddingLeft: 10,
+                                    }}>
+                                        <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 600 }}>{count}</span>
+                                    </div>
+                                </div>
+                                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', minWidth: 40 }}>
+                                    {stats.total > 0 ? Math.round((count / stats.total) * 100) : 0}%
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* View Toggle + Actions */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+                {['summary', 'pivot', 'raw'].map(mode => (
+                    <button
+                        key={mode}
+                        className={`btn ${viewMode === mode ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setViewMode(mode)}
+                        style={{ textTransform: 'capitalize', fontSize: '0.85rem', padding: '8px 16px' }}
+                    >
+                        {mode === 'summary' ? '📊 Answer Summary' : mode === 'pivot' ? '📋 Pivot Table' : '📄 Raw Data'}
+                    </button>
+                ))}
+
+                <div style={{ flex: 1 }}></div>
+
                 {pivotData.length > 0 && (
-                    <button className="btn btn-primary" onClick={downloadCSV}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                        Download CSV
+                    <button className="btn btn-secondary" onClick={downloadCSV} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>
+                        ⬇ Download CSV
                     </button>
                 )}
-                <button className="btn btn-secondary" onClick={() => setShowRaw(!showRaw)}>
-                    {showRaw ? (
-                        <><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /><line x1="9" x2="9" y1="9" y2="21" /></svg> Pivot View</>
-                    ) : (
-                        <><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" x2="8" y1="13" y2="13" /><line x1="16" x2="8" y1="17" y2="17" /><polyline points="10 9 9 9 8 9" /></svg> Raw Data</>
-                    )}
-                </button>
-                <button className="btn btn-secondary" onClick={fetchData}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
-                    Refresh
+                <button className="btn btn-secondary" onClick={fetchData} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>
+                    🔄 Refresh
                 </button>
             </div>
 
-            {/* Data */}
+            {/* Content based on view mode */}
             {pivotData.length > 0 ? (
-                showRaw ? (
-                    /* Raw data view */
-                    <div className="data-table-wrapper animate-in">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Phone</th>
-                                    <th>Q#</th>
-                                    <th>Answer</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rawData.map((r, i) => (
-                                    <tr key={i}>
-                                        <td><code>{r.phone_number}</code></td>
-                                        <td><span className="badge badge-blue">Q{r.question_index + 1}</span></td>
-                                        <td style={{ fontWeight: 500 }}>{r.answer}</td>
-                                        <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                                            {new Date(r.answered_at).toLocaleString()}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    /* Pivot view */
-                    <div className="data-table-wrapper animate-in">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Phone</th>
-                                    {SURVEY_QUESTIONS.map((q, i) => (
-                                        <th key={i} title={q} style={{ maxWidth: 140 }}>
-                                            {q.split('?')[0].split('(')[0].replace(/[0-9️⃣]/g, '').trim().substring(0, 25)}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pivotData.map((row, i) => (
-                                    <tr key={i}>
-                                        <td><code>{row.phone}</code></td>
-                                        {SURVEY_QUESTIONS.map((_, qi) => (
-                                            <td key={qi} style={{ fontWeight: 500 }}>
-                                                {row.answers[qi] || <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                                            </td>
+                <>
+                    {/* Answer Summary View */}
+                    {viewMode === 'summary' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
+                            {SURVEY_QUESTIONS.map((q, qi) => {
+                                const entries = answerStats[qi] || [];
+                                const totalForQ = entries.reduce((sum, [, c]) => sum + c, 0);
+                                const maxCount = entries.length > 0 ? entries[0][1] : 1;
+                                const colors = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316'];
+                                return (
+                                    <div key={qi} className="glass-card animate-in" style={{ animationDelay: `${qi * 0.05}s` }}>
+                                        <h4 style={{ marginBottom: 4, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                                            <span className="badge badge-blue" style={{ marginRight: 8 }}>Q{qi + 1}</span>
+                                            {Q_SHORT[qi]}
+                                        </h4>
+                                        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.3 }}>{q}</p>
+
+                                        {entries.length > 0 ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                {entries.map(([answer, count], ai) => (
+                                                    <div key={ai} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                        <div style={{ flex: 1, position: 'relative' }}>
+                                                            <div style={{
+                                                                background: 'var(--bg-primary)',
+                                                                borderRadius: 5,
+                                                                height: 30,
+                                                                overflow: 'hidden',
+                                                            }}>
+                                                                <div style={{
+                                                                    width: `${(count / maxCount) * 100}%`,
+                                                                    height: '100%',
+                                                                    background: colors[ai % colors.length] + '33',
+                                                                    borderLeft: `3px solid ${colors[ai % colors.length]}`,
+                                                                    borderRadius: 5,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    paddingLeft: 8,
+                                                                    minWidth: 'fit-content',
+                                                                }}>
+                                                                    <span style={{ fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                                                                        {answer}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minWidth: 50, textAlign: 'right' }}>
+                                                            {count} ({totalForQ > 0 ? Math.round((count / totalForQ) * 100) : 0}%)
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No answers yet</p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Pivot View */}
+                    {viewMode === 'pivot' && (
+                        <div className="data-table-wrapper animate-in">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Phone</th>
+                                        <th>Language</th>
+                                        {Q_SHORT.map((q, i) => (
+                                            <th key={i} title={SURVEY_QUESTIONS[i]} style={{ maxWidth: 140 }}>{q}</th>
                                         ))}
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )
+                                </thead>
+                                <tbody>
+                                    {pivotData.map((row, i) => (
+                                        <tr key={i}>
+                                            <td><code>{row.phone}</code></td>
+                                            <td><span className="badge badge-blue" style={{ textTransform: 'capitalize' }}>{row.language}</span></td>
+                                            {SURVEY_QUESTIONS.map((_, qi) => (
+                                                <td key={qi} style={{ fontWeight: 500 }}>
+                                                    {row.answers[qi] || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {/* Raw Data View */}
+                    {viewMode === 'raw' && (
+                        <div className="data-table-wrapper animate-in">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Phone</th>
+                                        <th>Q#</th>
+                                        <th>Question</th>
+                                        <th>Answer</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rawData.map((r, i) => (
+                                        <tr key={i}>
+                                            <td><code>{r.phone_number}</code></td>
+                                            <td><span className="badge badge-blue">Q{r.question_index + 1}</span></td>
+                                            <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', maxWidth: 200 }}>
+                                                {Q_SHORT[r.question_index] || `Q${r.question_index + 1}`}
+                                            </td>
+                                            <td style={{ fontWeight: 500 }}>{r.answer}</td>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                                                {new Date(r.answered_at).toLocaleString()}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </>
             ) : (
                 <div className="glass-card">
                     <div className="alert alert-info" style={{ margin: 0 }}>
-                        No survey responses yet. Send a campaign and have farmers reply to start the survey.
+                        No survey responses yet. Send a campaign and have farmers reply HI to start the survey.
                     </div>
                 </div>
             )}
