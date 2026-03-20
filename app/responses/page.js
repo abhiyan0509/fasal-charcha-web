@@ -73,6 +73,17 @@ function normalizeAnswer(rawAnswer, questionIndex) {
 
     if (!cleaned) return '';
 
+    // --- Global Invalid Checks ---
+    // Ignore common greetings that mistakenly get recorded as answers
+    if (['hi', 'hello', 'hey', 'namaste', 'kem cho'].includes(cleaned)) {
+        return 'Invalid/Greeting';
+    }
+    
+    // Ignore translation hallucinations from Sarvam (extremely long or repetitive text)
+    if (cleaned.length > 150 || cleaned.includes('translation of the given') || cleaned.includes('correct translation')) {
+        return 'Invalid/Translation Error';
+    }
+
     const categories = ANSWER_CATEGORIES[questionIndex];
 
     // Step 2: Numeric handling (area question)
