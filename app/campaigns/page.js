@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 export default function CampaignsPage() {
     const [allFarmers, setAllFarmers] = useState([]);
     const [testMode, setTestMode] = useState(true);
-    const [messageType, setMessageType] = useState('template');
+    const [messageType, setMessageType] = useState('text');
     const [templateName, setTemplateName] = useState('hello_world');
     const [templateLang, setTemplateLang] = useState('en');
     const [messageText, setMessageText] = useState(
@@ -252,8 +252,8 @@ export default function CampaignsPage() {
                     <div className="form-group">
                         <label className="form-label">Message Type</label>
                         <select className="form-select" value={messageType} onChange={e => setMessageType(e.target.value)}>
-                            <option value="template">Template (recommended)</option>
-                            <option value="text">Plain Text</option>
+                            <option value="text">Plain Text (recommended)</option>
+                            <option value="template">Template (requires Business Verification)</option>
                         </select>
                     </div>
 
