@@ -129,13 +129,14 @@ function normalizeAnswer(rawAnswer, questionIndex) {
 }
 
 export default function ResponsesPage() {
-    const [stats, setStats] = useState({ total: 0, completed: 0, inProgress: 0 });
+    const [stats, setStats] = useState({ total: 0, completed: 0, inProgress: 0, invalidCount: 0 });
     const [sessions, setSessions] = useState([]);
     const [pivotData, setPivotData] = useState([]);
     const [rawData, setRawData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState('summary'); // 'summary' | 'pivot' | 'raw'
     const [answerStats, setAnswerStats] = useState({});
+    const [showInvalid, setShowInvalid] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -154,11 +155,6 @@ export default function ResponsesPage() {
             setSessions(allSessions);
 
             const completedCount = allSessions.filter(s => s.completed_at).length;
-            setStats({
-                total: allSessions.length,
-                completed: completedCount,
-                inProgress: allSessions.length - completedCount,
-            });
 
             // Get all responses
             const { data: responses } = await supabase
@@ -167,11 +163,28 @@ export default function ResponsesPage() {
                 .order('answered_at', { ascending: true })
                 .limit(2000);
 
-            setRawData(responses || []);
+            const allResponses = responses || [];
+            setRawData(allResponses);
+
+            // Count invalid translations (either from DB flag or normalizer heuristic)
+            const invalidCount = allResponses.filter(r => {
+                // Use DB flag if available
+                if (r.translation_valid === false) return true;
+                // Fallback heuristic for old records without the flag
+                const norm = normalizeAnswer(r.answer, r.question_index);
+                return norm.startsWith('Invalid/');
+            }).length;
+
+            setStats({
+                total: allSessions.length,
+                completed: completedCount,
+                inProgress: allSessions.length - completedCount,
+                invalidCount,
+            });
 
             // Build pivot: group by phone_number
             const byPhone = {};
-            (responses || []).forEach(r => {
+            allResponses.forEach(r => {
                 if (!byPhone[r.phone_number]) byPhone[r.phone_number] = {};
                 byPhone[r.phone_number][r.question_index] = r.answer;
             });
@@ -184,27 +197,46 @@ export default function ResponsesPage() {
 
             setPivotData(pivot);
 
-            // Build answer frequency stats per question — WITH NORMALIZATION
-            const qStats = {};
-            SURVEY_QUESTIONS.forEach((_, qi) => {
-                const answersForQ = (responses || []).filter(r => r.question_index === qi);
-                const freq = {};
-                answersForQ.forEach(r => {
-                    const normalized = normalizeAnswer(r.answer, qi);
-                    if (normalized) freq[normalized] = (freq[normalized] || 0) + 1;
-                });
-                // Sort by frequency descending
-                qStats[qi] = Object.entries(freq)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 10);
-            });
-            setAnswerStats(qStats);
+            // Build answer frequency stats per question — WITH NORMALIZATION + FILTERING
+            buildAnswerStats(allResponses);
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
             setLoading(false);
         }
     }
+
+    function buildAnswerStats(responses) {
+        const qStats = {};
+        SURVEY_QUESTIONS.forEach((_, qi) => {
+            const answersForQ = (responses || rawData).filter(r => r.question_index === qi);
+            const freq = {};
+            answersForQ.forEach(r => {
+                // Skip invalid translations unless toggled on
+                const isDBInvalid = r.translation_valid === false;
+                const normalized = normalizeAnswer(r.answer, qi);
+                const isHeuristicInvalid = normalized.startsWith('Invalid/');
+                
+                if (!showInvalid && (isDBInvalid || isHeuristicInvalid)) return;
+                if (isDBInvalid || isHeuristicInvalid) {
+                    // Group all invalids together
+                    const key = isDBInvalid ? 'Invalid/Translation Failed' : normalized;
+                    freq[key] = (freq[key] || 0) + 1;
+                } else {
+                    if (normalized) freq[normalized] = (freq[normalized] || 0) + 1;
+                }
+            });
+            qStats[qi] = Object.entries(freq)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+        });
+        setAnswerStats(qStats);
+    }
+
+    // Rebuild stats when showInvalid toggles
+    useEffect(() => {
+        if (rawData.length > 0) buildAnswerStats(rawData);
+    }, [showInvalid]);
 
     // Language distribution
     const langDist = {};
@@ -287,6 +319,15 @@ export default function ResponsesPage() {
                     </div>
                     <div className="stat-value">{rawData.length}</div>
                 </div>
+                <div className="stat-card">
+                    <div className="stat-header">
+                        <div className="stat-icon-wrap" style={{ background: stats.invalidCount > 0 ? 'rgba(239,68,68,0.15)' : undefined }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={stats.invalidCount > 0 ? '#ef4444' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" x2="12" y1="9" y2="13" /><line x1="12" x2="12.01" y1="17" y2="17" /></svg>
+                        </div>
+                        <div className="stat-label">Translation Issues</div>
+                    </div>
+                    <div className="stat-value" style={{ color: stats.invalidCount > 0 ? '#ef4444' : undefined }}>{stats.invalidCount}</div>
+                </div>
             </div>
 
             {/* Language Distribution */}
@@ -335,6 +376,14 @@ export default function ResponsesPage() {
                         {mode === 'summary' ? '📊 Answer Summary' : mode === 'pivot' ? '📋 Pivot Table' : '📄 Raw Data'}
                     </button>
                 ))}
+
+                <button
+                    className={`btn ${showInvalid ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setShowInvalid(!showInvalid)}
+                    style={{ fontSize: '0.85rem', padding: '8px 16px', borderColor: showInvalid ? '#ef4444' : undefined, color: showInvalid ? '#ef4444' : undefined }}
+                >
+                    {showInvalid ? '⚠️ Hiding Invalid' : '⚠️ Show Invalid'} ({stats.invalidCount})
+                </button>
 
                 <div style={{ flex: 1 }}></div>
 
