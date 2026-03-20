@@ -52,8 +52,8 @@ const ANSWER_CATEGORIES = {
     // Q5: Irrigation
     5: {
         'Borewell': ['borewell', 'borwell', 'borwill', 'bore', 'tubewell', 'tube'],
-        'Canal': ['canal', 'nahar', 'naala'],
-        'Rain-fed': ['rain', 'rainfed', 'barish', 'varsha', 'baarish'],
+        'Canal': ['canal', 'nahar', 'nehar', 'naala', 'canal water'],
+        'Rain-fed': ['rain', 'rainfed', 'barish', 'varsha', 'baarish', 'seasonal', 'based on the year', 'based on year'],
         'River': ['river', 'nadi'],
         'Drip': ['drip', 'sprinkler', 'micro'],
         'Well': ['well', 'kuan', 'kuwa'],
@@ -82,6 +82,16 @@ function normalizeAnswer(rawAnswer, questionIndex) {
     // Ignore translation hallucinations from Sarvam (extremely long or repetitive text)
     if (cleaned.length > 150 || cleaned.includes('translation of the given') || cleaned.includes('correct translation')) {
         return 'Invalid/Translation Error';
+    }
+
+    // Bare single-digit numbers on non-numeric questions are likely mistakes
+    if (questionIndex !== 1 && /^\d{1}$/.test(cleaned)) {
+        return 'Invalid/Unclear';
+    }
+
+    // Known untranslated/garbage words
+    if (['shakou', 'tari kotha'].includes(cleaned)) {
+        return 'Invalid/Untranslated';
     }
 
     const categories = ANSWER_CATEGORIES[questionIndex];
@@ -146,10 +156,12 @@ export default function ResponsesPage() {
         setLoading(true);
         try {
             // Survey sessions (with language info)
-            const { data: sessionData } = await supabase
+            const { data: sessionData, error: sessionErr } = await supabase
                 .from('survey_sessions')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .order('started_at', { ascending: false });
+            
+            if (sessionErr) console.error("Session fetch error:", sessionErr);
 
             const allSessions = sessionData || [];
             setSessions(allSessions);
